@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import os.path
 import logging
 import boto.ses
 import json
@@ -8,7 +9,7 @@ import re
 from optparse import OptionParser
 from ConfigParser import ConfigParser
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 
 # pre-defined regular expression
 email_pattern = re.compile(r'^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*')
@@ -39,6 +40,9 @@ def process_options():
     parser.add_option("-f", "--from", dest="from_email", help="From email list")
     parser.add_option("-s", "--subject", dest="subject", help="Email message subject")
     parser.add_option("-m", "--message", dest="message", help="Email message body")
+    parser.add_option("-a", "--attach", dest="attachment", help="Email attachment")
+    parser.add_option("-r", "--raw", action="store_true",
+            dest="raw_format", help="Sends an email message in raw format")
 
     (options, args) = parser.parse_args()
     
@@ -103,14 +107,46 @@ def main():
     try:
         logging.info("sending email for to %s (from %s)" % (
                 str(to_addresses), str(from_address)))
-        result = ses.send_email(
-                from_address,
-                options.subject,
-                '',
-                to_addresses,
-                reply_addresses = reply_addresses,
-                html_body=options.message
-            )
+        if options.attachment:
+            from email.mime.text import MIMEText
+            from email.mime.application import MIMEApplication
+            from email.mime.multipart import MIMEMultipart
+            msg = MIMEMultipart()
+            msg['Subject'] = options.subject
+            msg['From'] = from_address
+            msg['To'] = ','.join(to_addresses)
+
+            msg.preamble = 'Multipart message.\n'
+            part = MIMEText(options.message)
+            msg.attach(part)
+
+            part = MIMEApplication(open(options.attachment, 'rb').read())
+            filename = os.path.basename(options.attachment)
+            (root, ext) = os.path.splitext(options.attachment)
+            if ext == '.ics':
+                part.set_type("text/calendar; method=REQUEST; name=\"%s\"" % filename)
+            part.add_header('Content-Disposition', 'attachment', filename=filename)
+            msg.attach(part)
+
+            logging.debug("@"*60)
+            logging.debug(msg.as_string())
+            logging.debug("@"*60)
+            result = ses.send_raw_email(msg.as_string(),
+                    source=from_address, 
+                    destinations=to_addresses)
+
+        elif options.raw_format:
+            logging.debug('send email in raw format')
+            result = ses.send_raw_email(options.message)
+        else:
+            result = ses.send_email(
+                    from_address,
+                    options.subject,
+                    '',
+                    to_addresses,
+                    reply_addresses = reply_addresses,
+                    html_body=options.message
+                )
 
         messageId = None
         try:
