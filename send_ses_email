@@ -46,9 +46,11 @@ def process_options():
 
     (options, args) = parser.parse_args()
     
-    if not (options.config_file and options.to_email and options.from_email):
+    if not (options.to_email and options.from_email):
         parser.print_help()
         sys.exit()
+
+    config_file = options.config_file if options.config_file else os.path.expanduser('~/.aws_config')
 
     if not options.message:
         if not sys.stdin.isatty():                                                
@@ -58,7 +60,7 @@ def process_options():
 
     logging.debug('reading configution file %s' % options.config_file)
     config = DefaultConfigParser()
-    config.read(options.config_file)
+    config.read(config_file)
     
     global SES_REGION, SES_ACCESS_KEY_ID, SES_SECRET_ASCCESS_KEY
 
@@ -67,6 +69,7 @@ def process_options():
     SES_SECRET_ASCCESS_KEY = config.get('ses', 'aws_secret_access_key', '')
 
     logging.debug("""
+        config file: %s
         configuration: 
             region: %s 
             key_id: %s 
@@ -74,7 +77,7 @@ def process_options():
         email:
             to: %s
             from: %s
-    """ % (SES_REGION, SES_ACCESS_KEY_ID, SES_SECRET_ASCCESS_KEY,
+    """ % (config_file, SES_REGION, SES_ACCESS_KEY_ID, SES_SECRET_ASCCESS_KEY,
         options.to_email, options.from_email))
 
     return options
